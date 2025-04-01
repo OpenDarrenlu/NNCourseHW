@@ -1,2 +1,5 @@
 # NNCourseHW
+
 Neural Network Course Homework
+
+报告建议采用jupyter notebook直接导出PDF。在notebook可以运行每个代码块产生结果并支持添加markdown文字分析。若使用的模型或数据较大，请在notebook运行好产生结果后导出报告
