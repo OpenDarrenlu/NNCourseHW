@@ -33,13 +33,13 @@ class DuelingDQN(nn.Module):
     def __init__(self, state_dim, action_dim):
         super().__init__()
         self.feature = nn.Sequential(
-            nn.Linear(state_dim, 64), nn.ReLU()
+            nn.Linear(state_dim, 32), nn.ReLU()
         )
         self.value_stream = nn.Sequential(
-            nn.Linear(64, 64), nn.ReLU(), nn.Linear(64, 1)
+            nn.Linear(32, 128), nn.ReLU(), nn.Linear(128, action_dim)
         )
         self.advantage_stream = nn.Sequential(
-            nn.Linear(64, 64), nn.ReLU(), nn.Linear(64, action_dim)
+            nn.Linear(32, 128), nn.ReLU(), nn.Linear(128, action_dim)
         )
 
     def forward(self, x):
@@ -178,11 +178,12 @@ def train():
     env.close()
 
     ### 输出评价指标 ###
-    final_avg_reward = np.mean(scores[-100:]) if len(scores) >= 100 else np.mean(scores)
-    stability_std = np.std(scores[-100:]) if len(scores) >= 100 else np.std(scores)
+    eval_episodes = 100
+    final_avg_reward = np.mean(scores[-eval_episodes:]) if len(scores) >= eval_episodes else np.mean(scores)
+    stability_std = np.std(scores[-eval_episodes:]) if len(scores) >= eval_episodes else np.std(scores)
 
     print("\n=== 训练完成 ===")
-    print(f"平均奖励值（最后100轮）: {final_avg_reward:.2f}")
+    print(f"平均奖励值（最后{eval_episodes}轮）: {final_avg_reward:.2f}")
     print(f"收敛速度（达到平均奖励{solved_reward}所需轮数）: {convergence_episode if convergence_episode else '未收敛'}")
     print(f"稳定性（最后100轮标准差）: {stability_std:.2f}")
 

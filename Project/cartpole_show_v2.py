@@ -1,22 +1,21 @@
 import gym
 import torch
 import numpy as np
-# from cartpole_dqn_agent_v2 import DuelingDQN 
-from cartpole_dqn_agent import DQN 
+from cartpole_dqn_agent_v2 import DuelingDQN 
 
 # 设置设备
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # 创建环境
-env = gym.make('CartPole-v1', max_episode_steps=20000, render_mode='human')  # 使用 human 渲染模式
+# env = gym.make('CartPole-v1', max_episode_steps=20000, render_mode='human')  # 使用 human 渲染模式
+env = gym.make('CartPole-v1', max_episode_steps=20000)
 
 # 获取状态和动作空间维度
 state_dim = env.observation_space.shape[0]
 action_dim = env.action_space.n
 
 # 初始化网络
-policy_net = DQN(state_dim, action_dim).to(device)
-# policy_net = DuelingDQN(state_dim, action_dim).to(device)
+policy_net = DuelingDQN(state_dim, action_dim).to(device)
 # policy_net.load_state_dict(torch.load("dqn_cartpole_100.pth"))
 # policy_net.load_state_dict(torch.load("dqn_cartpole_300.pth"))
 # policy_net.load_state_dict(torch.load("dqn_cartpole_500.pth"))
