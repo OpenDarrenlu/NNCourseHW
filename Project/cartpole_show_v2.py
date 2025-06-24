@@ -1,106 +1,90 @@
 import gym
 import torch
 import numpy as np
-from cartpole_dqn_agent_v2 import DuelingDQN 
+from collections import deque
+from cartpole_dqn_agent_v2 import TransformerDQN  # 你应把训练代码中的模型部分单独存成 transformer_dqn_model.py
 
 # 设置设备
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# 创建环境
-# env = gym.make('CartPole-v1', max_episode_steps=20000, render_mode='human')  # 使用 human 渲染模式
-env = gym.make('CartPole-v1', max_episode_steps=20000)
-
-# 获取状态和动作空间维度
+# 环境设置
+env = gym.make('CartPole-v1', max_episode_steps=1000, render_mode='human')
 state_dim = env.observation_space.shape[0]
 action_dim = env.action_space.n
+seq_len = 20  # 与训练时保持一致
 
-# 初始化网络
-policy_net = DuelingDQN(state_dim, action_dim).to(device)
-# policy_net.load_state_dict(torch.load("dqn_cartpole_100.pth"))
-# policy_net.load_state_dict(torch.load("dqn_cartpole_300.pth"))
-# policy_net.load_state_dict(torch.load("dqn_cartpole_500.pth"))
-policy_net.load_state_dict(torch.load("dqn_cartpole_v1_223_500.pth"))
-policy_net.eval()  # 设置为评估模式
+# 初始化模型
+model = TransformerDQN(state_dim, action_dim, seq_len).to(device)
+model.load_state_dict(torch.load("transformer_dqn_cartpole_no_convergence.pth"))  # 替换为你的模型文件名
+model.eval()
 
-# 测试函数
-def test_model(episodes=5):
+# 标准测试
+def test_model(episodes=5, render=False):
     for episode in range(episodes):
         state, _ = env.reset()
+        state_buffer = deque([np.zeros(state_dim) for _ in range(seq_len - 1)], maxlen=seq_len - 1)
+        state_buffer.append(state)
+
         total_reward = 0
-        done = False
-        truncated = False
+        done, truncated = False, False
 
         while not (done or truncated):
-            # 转换为 tensor
-            state_tensor = torch.FloatTensor(state).to(device)
+            state_seq = list(state_buffer) + [state]
+            state_tensor = torch.FloatTensor(state_seq).unsqueeze(0).to(device)  # [1, seq_len, state_dim]
+
             with torch.no_grad():
-                action = policy_net(state_tensor).argmax().item()
+                action = model(state_tensor).argmax().item()
+
+            next_state, reward, done, truncated, _ = env.step(action)
+            if render:
+                env.render()
+
+            # 更新序列
+            state = next_state
+            state_buffer.append(state)
+            total_reward += reward
+
+        print(f"[Test] Episode {episode+1}: Total reward = {total_reward}")
+
+    env.close()
+
+# 扰动测试
+def test_with_perturbation(episodes=5, perturb_interval=50, perturb_magnitude=0.5):
+    for episode in range(episodes):
+        state, _ = env.reset()
+        state_buffer = deque([np.zeros(state_dim) for _ in range(seq_len - 1)], maxlen=seq_len - 1)
+        state_buffer.append(state)
+
+        total_reward = 0
+        step_count = 0
+        done, truncated = False, False
+
+        while not (done or truncated):
+            if step_count > 0 and step_count % perturb_interval == 0:
+                perturb = perturb_magnitude * np.random.choice([-1, 1])
+                print(f"[扰动] 第{step_count}步，对位置添加扰动: {perturb}")
+                state[0] += perturb
+
+            state_seq = list(state_buffer) + [state]
+            state_tensor = torch.FloatTensor(state_seq).unsqueeze(0).to(device)
+
+            with torch.no_grad():
+                action = model(state_tensor).argmax().item()
 
             next_state, reward, done, truncated, _ = env.step(action)
 
             state = next_state
+            state_buffer.append(state)
             total_reward += reward
+            step_count += 1
 
-            # 可以适当延时让动画更清晰（可选）
-            # import time; time.sleep(0.02)
-
-        print(f"Episode {episode+1}: Total reward: {total_reward}")
+        print(f"[扰动] Episode {episode+1}: Total reward = {total_reward}, Steps = {step_count}")
 
     env.close()
 
 if __name__ == "__main__":
-    test_model()
-# import gym
-# import torch
-# import numpy as np
-# from cartpole_dqn_agent import DQN  # 替换为你自己的网络定义文件
+    # 普通测试
+    test_model(episodes=5, render=False)
 
-# # 设置设备
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# # 创建环境（可调整最大步数）
-# env = gym.make('CartPole-v1', render_mode='human', max_episode_steps=1000)
-
-# # 获取状态和动作空间维度
-# state_dim = env.observation_space.shape[0]
-# action_dim = env.action_space.n
-
-# # 初始化并加载模型
-# policy_net = DQN(state_dim, action_dim).to(device)
-# # policy_net.load_state_dict(torch.load("dqn_cartpole_300.pth"))
-# policy_net.load_state_dict(torch.load("dqn_cartpole.pth"))
-# policy_net.eval()
-
-# # 测试函数，包含扰动
-# def test_with_perturbation(episodes=5, perturb_interval=50, perturb_magnitude=0.5):
-#     for episode in range(episodes):
-#         state, _ = env.reset()
-#         total_reward = 0
-#         done = False
-#         truncated = False
-#         step_count = 0
-
-#         while not (done or truncated):
-#             # 添加扰动：每隔一定步数，给小车位移一个扰动
-#             if step_count % perturb_interval == 0 and step_count > 0:
-#                 print(f"[扰动] 第 {step_count} 步，对小车施加扰动: ±{perturb_magnitude}")
-#                 state[0] += perturb_magnitude * np.random.choice([-1, 1])  # 随机向左或右扰动
-
-#             # 选择动作
-#             state_tensor = torch.FloatTensor(state).to(device)
-#             with torch.no_grad():
-#                 action = policy_net(state_tensor).argmax().item()
-
-#             # 执行动作
-#             next_state, reward, done, truncated, _ = env.step(action)
-
-#             state = next_state
-#             total_reward += reward
-#             step_count += 1
-
-#         print(f"Episode {episode+1}: Total reward = {total_reward}, Steps = {step_count}")
-
-#     env.close()
-
-# if __name__ == "__main__":
-#     test_with_perturbation(episodes=5, perturb_interval=50, perturb_magnitude=0.5)
+    # 扰动测试（可选）
+    # test_with_perturbation(episodes=5, perturb_interval=50, perturb_magnitude=0.5)
