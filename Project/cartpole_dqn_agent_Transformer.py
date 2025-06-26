@@ -193,8 +193,8 @@ def train():
     plt.title("Training Curve (Transformer-DQN)")
     plt.legend()
     plt.grid(True)
-    plt.savefig("transformer_dqn_reward_curve.png")
-    plt.show()
+    plt.savefig("Transformer.png")
+    # plt.show()
 
 if __name__ == "__main__":
     train()

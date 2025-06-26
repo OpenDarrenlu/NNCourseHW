@@ -2,7 +2,7 @@ import gym
 import torch
 import numpy as np
 from collections import deque
-from cartpole_dqn_agent_v2 import TransformerDQN  # 你应把训练代码中的模型部分单独存成 transformer_dqn_model.py
+from Project.cartpole_dqn_agent_Transformer import TransformerDQN  # 你应把训练代码中的模型部分单独存成 transformer_dqn_model.py
 
 # 设置设备
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
