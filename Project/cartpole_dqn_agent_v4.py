@@ -8,7 +8,7 @@ import random
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import sys
 import time
-import swanlab
+# import swanlab
 
 # 检查是否可以使用GPU加速
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -144,6 +144,7 @@ def train():
     reward_threshold = 450
     
     scores = [0]
+    moving_avg = []
 
     cur_state = 1
     good_before = False
@@ -251,14 +252,15 @@ def train():
 
         scores.append(total_reward)
         avg_score_10 = np.mean(scores[-10:])
+        moving_avg.append(avg_score_10)
         avg_score_3 = np.mean(scores[-3:])
         print(f"Episode: {episode+1}, Total reward: {total_reward}, Avg reward: {avg_score_10:.2f}, Epsilon: {agent.epsilon:.2f}")
-        swanlab.log({"Total reward": total_reward, "Avg reward": avg_score_10, "cur_state":cur_state, "state_epsd_cnt":state_epsd_cnt, "LR": agent.optimizer.param_groups[0]['lr']})
+        # swanlab.log({"Total reward": total_reward, "Avg reward": avg_score_10, "cur_state":cur_state, "state_epsd_cnt":state_epsd_cnt, "LR": agent.optimizer.param_groups[0]['lr']})
 
         if avg_score_10 >= solved_reward and avg_score_3 >= 500:
             print(f"Solved in {episode+1} episodes!")
             time2 = time.time()
-            swanlab.log({"time":time2-time1, "step":step_cnt})
+            # swanlab.log({"time":time2-time1, "step":step_cnt})
             # torch.save(agent.policy_net.state_dict(), f"dqn_cartpole_{episode+1}.pth")
             torch.save(agent.policy_net.state_dict(), f"dqn_cartpole_dim{dim}.pth")
             break
@@ -272,6 +274,24 @@ def train():
             print("Resume training..., rewardThreshold:", reward_threshold)
             agent.policy_net.load_state_dict(torch.load(f"dqn_cartpole_checkpoint_dim{dim}.pth"))
             flag_resume = False
+            
+    eval_episodes = 50
+    final_avg_reward = np.mean(scores[-eval_episodes:]) if len(scores) >= eval_episodes else np.mean(scores)
+    stability_std = np.std(scores[-eval_episodes:]) if len(scores) >= eval_episodes else np.std(scores)
+
+    print("\n=== 训练完成 ===")
+    print(f"平均奖励值（最后{eval_episodes}轮）: {final_avg_reward:.2f}")
+    print(f"收敛速度（达到平均奖励{solved_reward}所需轮数）: {episode}")
+    print(f"稳定性（最后100轮标准差）: {stability_std:.2f}")
+    from matplotlib import pyplot as plt
+    plt.plot(scores, label='Total Reward')
+    plt.plot(moving_avg, label='Moving Avg (10)')
+    plt.xlabel("Episode")
+    plt.ylabel("Reward")
+    plt.title("Training Curve (3MLP)")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig("3MLP_v4.png")
 
     env.close()
     return episode
@@ -287,8 +307,8 @@ if __name__ == "__main__":
     else:
         print("Using default dim:", dim)
         
-    run = swanlab.init(project="DQN-CartPole",experiment_name=f"dim={dim}")
+    # run = swanlab.init(project="DQN-CartPole",experiment_name=f"dim={dim}")
     
-    for i in range(100):
+    for i in range(1):
         finish_episode = train() + 1
-        swanlab.log({"finish_episode":finish_episode})
+        # swanlab.log({"finish_episode":finish_episode})

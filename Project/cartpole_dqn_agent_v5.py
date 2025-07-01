@@ -6,42 +6,52 @@ import torch.optim as optim
 from collections import deque, namedtuple
 import random
 from torch.optim.lr_scheduler import CosineAnnealingLR
+import sys
+import time
 # import F
 import torch.nn.functional as F
-
 # import swanlab
-
-# run = swanlab.init(project="DQN-CartPole")
 
 # 检查是否可以使用GPU加速
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # 奖励权重参数
-# ANGLE_WEIGHT = 0.4       # 角度惩罚权重
-# POSITION_WEIGHT = 0.1    # 位置惩罚权重
-# VELOCITY_WEIGHT = 0.05   # 速度惩罚权重
-# ANGLE_THRESHOLD = 0.05   # 角度阈值（低于此值不惩罚）
-ANGLE_WEIGHT = 0       # 角度惩罚权重
-POSITION_WEIGHT = 0    # 位置惩罚权重
+ANGLE_WEIGHT = 100       # 角度惩罚权重
+POSITION_WEIGHT = 20    # 位置惩罚权重
 VELOCITY_WEIGHT = 0   # 速度惩罚权重
-ANGLE_THRESHOLD = 0   # 角度阈值（低于此值不惩罚）
+ANGLE_THRESHOLD = 0.01   # 角度阈值（低于此值不惩罚）
+
+# ANGLE_WEIGHT = 200     # 角度惩罚权重
+# POSITION_WEIGHT = 80    # 位置惩罚权重
+# VELOCITY_WEIGHT = 1   # 速度惩罚权重
+# ANGLE_THRESHOLD = 0.01   # 角度阈值（低于此值不惩罚）
+
 # 构建Q网络结构
-dim = 128
-class DQN(nn.Module):
-    def __init__(self, state_dim, action_dim):
-        super(DQN, self).__init__()
-        self.net = nn.Sequential(
-            nn.Linear(state_dim, dim),
-            nn.ReLU(),
+dim = 512
+class ResBlock(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.block = nn.Sequential(
             nn.Linear(dim, dim),
             nn.ReLU(),
-            nn.Linear(dim, action_dim)
+            nn.Linear(dim, dim)
         )
 
     def forward(self, x):
-        return self.net(x)
+        return x + self.block(x)
 
+class DQN(nn.Module):
+    def __init__(self, state_dim, action_dim, dim=128):
+        super(DQN, self).__init__()
+        self.fc1 = nn.Linear(state_dim, dim)
+        self.res = ResBlock(dim)
+        self.out = nn.Linear(dim, action_dim)
 
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.res(x))
+        return self.out(x)
+    
 # 经验回放缓冲区
 Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward', 'done'))
 
@@ -133,6 +143,7 @@ class DQNAgent:
 
 # 训练函数
 def train():
+    # env = gym.make('CartPole-v1', render_mode='human')
     env = gym.make('CartPole-v1')
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.n
@@ -151,11 +162,15 @@ def train():
     good_before = False
     good_before_cnt = 0
     state_epsd_cnt = 0
+    step_cnt = 0
+    
+    time1 = time.time()
     for episode in range(episodes):
         state = env.reset()[0]
         total_reward = 0
 
         for step in range(max_steps):
+            step_cnt += 1
             action = agent.select_action(state)
             next_state, reward, done, truncated, _ = env.step(action)
             
@@ -179,7 +194,8 @@ def train():
             
             # 5. 添加角度稳定奖励（当角度接近竖直时给予小奖励）
             if abs(angle) < ANGLE_THRESHOLD:
-                modified_reward += 0.05 * (1 - abs(angle)/ANGLE_THRESHOLD)
+                modified_reward += 5 * (1 - abs(angle)/ANGLE_THRESHOLD)
+            # print(f"reward:{reward},\t angle_penalty:{angle_penalty},\t position_penalty:{position_penalty},\t velocity_penalty:{velocity_penalty},\t jiangli:{5 * (1 - abs(angle)/ANGLE_THRESHOLD)}")
                 
             agent.store_transition(state, action, next_state, modified_reward, done)
             agent.update()
@@ -200,30 +216,31 @@ def train():
                 break
         
         ######### change lr ###########
-        # if total_reward < 50:
-        #     next_state = 1
-        #     if scores[-1] == 500:
-        #         agent.lr = 0.5e-3
-        #     elif good_before:
-        #         agent.lr = 2e-3
-        #     else:
-        #         2e-3
-        # elif 50 <= total_reward < 200:
-        #     next_state = 1
-        #     agent.lr = 2e-3
-        # elif 200 <= total_reward < 400:
-        #     next_state = 2
-        #     agent.lr = 1e-3
-        # else:
-        #     next_state = 3
-        #     agent.lr = 1e-4
         
-        # if total_reward > 350:
-        #     good_before = True
-        # if cur_state == next_state:
-        #     state_epsd_cnt += 1
-        # else:
-        #     state_epsd_cnt = 0
+        if total_reward < 50:
+            next_state = 1
+            if scores[-1] == 500:
+                agent.lr = 0.5e-3
+            elif good_before:
+                agent.lr = 2e-3
+            else:
+                2e-3
+        elif 50 <= total_reward < 200:
+            next_state = 1
+            agent.lr = 2e-3
+        elif 200 <= total_reward < 400:
+            next_state = 2
+            agent.lr = 1e-3
+        else:
+            next_state = 3
+            agent.lr = 1e-4
+        
+        if total_reward > 350:
+            good_before = True
+        if cur_state == next_state:
+            state_epsd_cnt += 1
+        else:
+            state_epsd_cnt = 0
         # if good_before:
         #     if state_epsd_cnt > 40:
         #         agent.lr = 0.001
@@ -244,31 +261,32 @@ def train():
         #     good_before = False
         cur_state = next_state
         ##############################
-        if episode>100 and episode < 102:
-            total_reward = 500
+
         scores.append(total_reward)
         avg_score_10 = np.mean(scores[-10:])
+        moving_avg.append(avg_score_10)
         avg_score_3 = np.mean(scores[-3:])
         print(f"Episode: {episode+1}, Total reward: {total_reward}, Avg reward: {avg_score_10:.2f}, Epsilon: {agent.epsilon:.2f}")
-        # swanlab.log({"Total reward": total_reward, "Avg reward": avg_score, "cur_state":cur_state, "state_epsd_cnt":state_epsd_cnt, "LR": agent.optimizer.param_groups[0]['lr']})
+        # swanlab.log({"Total reward": total_reward, "Avg reward": avg_score_10, "cur_state":cur_state, "state_epsd_cnt":state_epsd_cnt, "LR": agent.optimizer.param_groups[0]['lr']})
 
         if avg_score_10 >= solved_reward and avg_score_3 >= 500:
             print(f"Solved in {episode+1} episodes!")
-            torch.save(agent.policy_net.state_dict(), f"dqn_cartpole_{episode+1}.pth")
+            time2 = time.time()
+            # swanlab.log({"time":time2-time1, "step":step_cnt})
+            # torch.save(agent.policy_net.state_dict(), f"dqn_cartpole_{episode+1}.pth")
+            torch.save(agent.policy_net.state_dict(), f"dqn_cartpole_dim{dim}.pth")
             break
-        # if np.mean(scores[-2:]) > reward_threshold:
-        #     flag_resume = True
-        #     torch.save(agent.policy_net.state_dict(), "dqn_cartpole.pth")
-        #     # if (total_reward > reward_threshold + 100):
-        #     #     reward_threshold += 100
-        #     #     print(f"Reward threshold updated to {reward_threshold}")
-        # if flag_resume and total_reward < reward_threshold-200:
-        #     print("Resume training..., rewardThreshold:", reward_threshold)
-        #     agent.policy_net.load_state_dict(torch.load("dqn_cartpole.pth"))
-        #     flag_resume = False
-        moving_avg.append(avg_score_10)
-    env.close()
-    
+        if np.mean(scores[-5:]) > reward_threshold:
+            flag_resume = True
+            torch.save(agent.policy_net.state_dict(), f"dqn_cartpole_checkpoint_dim{dim}.pth")
+            # if (total_reward > reward_threshold + 100):
+            #     reward_threshold += 100
+            #     print(f"Reward threshold updated to {reward_threshold}")
+        if flag_resume and total_reward < reward_threshold-200:
+            print("Resume training..., rewardThreshold:", reward_threshold)
+            agent.policy_net.load_state_dict(torch.load(f"dqn_cartpole_checkpoint_dim{dim}.pth"))
+            flag_resume = False
+            
     eval_episodes = 50
     final_avg_reward = np.mean(scores[-eval_episodes:]) if len(scores) >= eval_episodes else np.mean(scores)
     stability_std = np.std(scores[-eval_episodes:]) if len(scores) >= eval_episodes else np.std(scores)
@@ -285,19 +303,24 @@ def train():
     plt.title("Training Curve (3MLP)")
     plt.legend()
     plt.grid(True)
-    plt.savefig("3MLP.png")
-    # plt.show()
+    plt.savefig("3MLP_v5.png")
+
+    env.close()
     return episode
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        try:
+            new_dim = int(sys.argv[1])
+            dim = new_dim  # ← 直接覆盖模块级的 dim 变量
+        except ValueError:
+            print("Error: dim must be an integer.")
+            sys.exit(1)
+    else:
+        print("Using default dim:", dim)
+        
+    # run = swanlab.init(project="DQN-CartPole",experiment_name=f"dim={dim}")
+    
     for i in range(1):
         finish_episode = train() + 1
         # swanlab.log({"finish_episode":finish_episode})
-
-# resMLP
-'''
-=== 训练完成 ===
-平均奖励值（最后50轮）: 290.86
-收敛速度（达到平均奖励500所需轮数）: 66
-稳定性（最后100轮标准差）: 133.04
-'''
